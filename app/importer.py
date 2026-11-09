@@ -69,6 +69,45 @@ def read_table(filename: str, data: bytes):
     raise ValueError("Nepodařilo se rozpoznat hlavičku souboru (očekávám šablonu nebo sloupce mapy předkládání).")
 
 
+def _classify_fill(rgb: str | None) -> str | None:
+    """Barva buňky -> význam podle poznámek pod tabulkou mapy."""
+    if not rgb or len(rgb) < 6:
+        return None
+    import colorsys
+    r, g, b = (int(rgb[-6:][i:i + 2], 16) / 255 for i in (0, 2, 4))
+    h, sat, v = colorsys.rgb_to_hsv(r, g, b)
+    h *= 360
+    if v > 0.93 and sat < 0.12:
+        return None                  # téměř bílá / krémová = bez významu
+    if sat < 0.08:
+        return "grey"
+    if 175 <= h <= 235:
+        return "blue"
+    if 15 <= h < 36:
+        return "orange"
+    if 36 <= h <= 65:
+        return "yellow"
+    if h < 15 or h > 340:
+        return "red"
+    return None
+
+
+def read_meta(filename: str, data: bytes, col: int) -> dict[int, dict]:
+    """Řádek -> {fill, comment} pro buňku zdroje (jen XLSX)."""
+    if not filename.lower().endswith((".xlsx", ".xlsm")):
+        return {}
+    import openpyxl
+    ws = openpyxl.load_workbook(io.BytesIO(data)).worksheets[0]
+    out = {}
+    for row in ws.iter_rows(min_row=1):
+        c = row[col] if col < len(row) else None
+        if c is None:
+            continue
+        rgb = c.fill.fgColor.rgb if c.fill and c.fill.fill_type and isinstance(c.fill.fgColor.rgb, str) else None
+        out[c.row] = {"fill": _classify_fill(rgb), "comment": (c.comment.text.strip() if c.comment else "")}
+    return out
+
+
 def _organ(v):
     n = norm(v)
     return ORGAN_ALIASES.get(n)
@@ -120,7 +159,7 @@ def _from_ecru(h: list[str], r: list[str]) -> dict:
         "priprava_dnu": "", "odstup_dnu": "", "podklady": g("druh"), "bod_programu": g("oznaceni"),
         "navrh_usneseni": "", "spoustec": "", "klicova_slova": "",
         "zdroj": "Mapa předkládání (import)", "clanek": g("zdroje povinnosti"), "verze": "", "ucinnost_od": "",
-        "overeno_dne": "", "stav": "K ověření", "duvod_k_overeni": "",
+        "overeno_dne": "", "stav": "", "duvod_k_overeni": "",
         "_ecru": True, "_obsah": g("obsah povinnosti") + " " + g("blizsi urceni obsahu"),
     }
 
@@ -130,7 +169,7 @@ def _rec(h, r):
     return {f: g(norm(f.replace("_", " "))) for f in NATIVE_FIELDS}
 
 
-def normalize_record(raw: dict, today: date) -> tuple[dict | None, list[str], list[str]]:
+def normalize_record(raw: dict, today: date, opts: dict | None = None) -> tuple[dict | None, list[str], list[str]]:
     errors, warnings = [], []
     subject = raw["predmet"]
     organ = _organ(raw["organ"])
@@ -226,12 +265,40 @@ def normalize_record(raw: dict, today: date) -> tuple[dict | None, list[str], li
     if missing and not raw.get("_ecru"):
         reasons.append("Chybí podklad: " + ", ".join(missing) + ".")
     if raw.get("_ecru"):
-        reasons.append("Neschválený podklad: chybí verze, účinnost a datum ověření.")
+        opts = opts or {}
         n = norm(raw["clanek"])
-        if not raw["clanek"] or "nečitelné" in raw["clanek"].lower() or "neni povinne" in n:
+        bad_src = not raw["clanek"] or "nečitelné" in raw["clanek"].lower() or "neni povinne" in n
+        meta = raw.get("_meta") or {}
+        fill, comment = meta.get("fill"), meta.get("comment") or ""
+        notes = []
+        if bad_src:
             reasons.append("Zdroj povinnosti chybí, je nečitelný nebo uvádí „není povinné schvalovat“.")
         if "nečitelné" in (raw["predmet"] + raw.get("_obsah", "")).lower():
             reasons.append("V podkladu je nečitelný text.")
+            bad_src = True
+        if fill == "orange":
+            reasons.append("Zdroj nedohledán (oranžově v podkladu: odkaz na stanovy vymazán).")
+            bad_src = True
+        elif fill == "grey":
+            reasons.append("Zdroj tvořil jen vnitřní předpis nebo ve stanovách není – podle podkladu schvalování tímto orgánem není povinné (šedě).")
+            bad_src = True
+        elif fill == "red":
+            reasons.append("Údaj je v podkladu označen jako špatně čitelný nebo nejistý (červeně).")
+            bad_src = True
+        elif fill == "yellow":
+            warnings.append("Žlutě v podkladu: zdroj, lhůta nebo výskyt opraveny podle stanov / zákona.")
+        elif fill == "blue":
+            warnings.append("Modře v podkladu: povinnost doplněna z ZOK nebo stanov, v původní tabulce chyběla.")
+        if comment:
+            notes.append("Komentář v podkladu: " + comment.replace("\n", " "))
+        full = all(opts.get(k) for k in ("verze", "ucinnost_od", "overeno_dne"))
+        if full and not bad_src:
+            raw["zdroj"] = opts.get("zdroj") or raw["zdroj"]
+            raw["verze"], raw["ucinnost_od"], raw["overeno_dne"] = opts["verze"], opts["ucinnost_od"], opts["overeno_dne"]
+            warnings.append("Verze, účinnost a datum ověření doplněny při importu uživatelem.")
+        else:
+            reasons.append("Neschválený podklad: chybí verze, účinnost a datum ověření.")
+        raw["_notes"] = notes
     if wanted and not wanted.startswith(("k overeni", "potvrzeno")):
         warnings.append(f"Neznámý stav „{raw['stav']}“, bude vyhodnocen podle úplnosti podkladu.")
     status = "k_overeni" if reasons else "potvrzeno"
@@ -245,12 +312,12 @@ def normalize_record(raw: dict, today: date) -> tuple[dict | None, list[str], li
     rec = {
         "code": code, "duty_code": duty, "step_no": int(step), "role": raw["role"], "subject": subject,
         "organ": organ, "act_type": raw["ukon"], "area": raw["oblast"], "kind": kind, "applicability": applic,
-        "conditions": raw["podminky"], "exceptions": raw["vyjimky"], "follow_up": raw["navaznosti"],
+        "conditions": raw["podminky"], "exceptions": (raw["vyjimky"] + "\n" + " ".join(raw.get("_notes", []))).strip() if not reasons else raw["vyjimky"], "follow_up": raw["navaznosti"],
         "deadline_kind": dk, "deadline_dates": dates, "deadline_months": months,
         "deadline_text": raw["lhuta_text"], "prep_days": prep, "gap_days": gap, "documents": raw["podklady"],
         "agenda_title": raw["bod_programu"] or subject, "resolution_text": raw["navrh_usneseni"],
         "trigger_key": ";".join(trig), "keywords": raw["klicova_slova"], "status": status,
-        "verify_reason": " ".join(reasons), "source_name": raw["zdroj"], "source_ref": raw["clanek"],
+        "verify_reason": " ".join(reasons + raw.get("_notes", [])) if reasons else "", "source_name": raw["zdroj"], "source_ref": raw["clanek"],
         "source_version": raw["verze"], "effective_from": raw["ucinnost_od"] or None,
         "verified_on": raw["overeno_dne"] or None,
     }
@@ -261,9 +328,10 @@ def content_hash(rec: dict) -> str:
     return hashlib.sha256(json.dumps({k: rec.get(k) for k in DB_FIELDS}, sort_keys=True, default=str).encode()).hexdigest()
 
 
-def build_preview(db, filename: str, data: bytes, today: date) -> dict:
+def build_preview(db, filename: str, data: bytes, today: date, opts: dict | None = None) -> dict:
     sha = hashlib.sha256(data).hexdigest()
     headers, rows, layout = read_table(filename, data)
+    meta = read_meta(filename, data, headers.index("zdroje povinnosti")) if layout == "ecru" and "zdroje povinnosti" in headers else {}
     out, seen_codes, seen_sig = [], {}, {}
     existing = {r["code"]: r["content_hash"] for r in db.execute("SELECT code, content_hash FROM obligations")}
     for ln, r in rows:
@@ -272,7 +340,11 @@ def build_preview(db, filename: str, data: bytes, today: date) -> dict:
         raw = _from_ecru(headers, r) if layout == "ecru" else _rec(headers, r)
         if layout == "ecru" and not raw["predmet"] and not raw["organ"]:
             continue  # poznámky pod tabulkou
-        rec, errs, warns = normalize_record(raw, today)
+        if layout == "ecru":
+            raw["_meta"] = meta.get(ln, {})
+            for k in ("verze", "ucinnost_od", "overeno_dne"):
+                pass
+        rec, errs, warns = normalize_record(raw, today, opts)
         item = {"line": ln, "record": rec, "errors": errs, "warnings": warns, "action": "error" if errs else "new",
                 "code": (rec or {}).get("code") or raw["kod"], "subject": raw["predmet"], "organ": raw["organ"]}
         if rec:

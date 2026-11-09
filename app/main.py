@@ -258,12 +258,19 @@ def template():
 
 
 @app.post("/api/import/preview")
-async def import_preview(file: UploadFile = File(...), db=Depends(get_db)):
+async def import_preview(file: UploadFile = File(...), zdroj: str = "", verze: str = "", ucinnost_od: str = "",
+                         overeno_dne: str = "", db=Depends(get_db)):
     data = await file.read()
     if len(data) > 20_000_000:
         raise HTTPException(413, "Soubor je příliš velký.")
     try:
-        return importer.build_preview(db, file.filename or "import.csv", data, date.today())
+        opts = {"zdroj": zdroj, "verze": verze, "ucinnost_od": ucinnost_od, "overeno_dne": overeno_dne}
+        for k in ("ucinnost_od", "overeno_dne"):
+            if opts[k]:
+                _d(opts[k], k)
+        if any(opts.values()) and not all(opts[k] for k in ("verze", "ucinnost_od", "overeno_dne")):
+            raise HTTPException(422, "Vyplňte verzi, účinnost i datum ověření (nebo žádné z nich).")
+        return importer.build_preview(db, file.filename or "import.csv", data, date.today(), opts)
     except ValueError as e:
         raise HTTPException(422, str(e))
     except Exception as e:

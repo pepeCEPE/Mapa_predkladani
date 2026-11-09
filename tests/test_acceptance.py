@@ -224,3 +224,34 @@ def test_dashboard_a_kalendar(client):
     assert zav["deadline"] == "2027-06-30" and zav["recommended"] == "2027-06-24" and zav["prep_date"] < zav["recommended"]
     cal2 = client.get("/api/calendar", params={"year": 2030, "today": "2026-11-09"}).json()
     assert set(cal2["incomplete"]) == {"predstavenstvo", "dozorci_rada", "valna_hromada"}
+
+
+def test_import_mapy_cte_barvy_komentare_a_doplneni_verze(client, tmp_path):
+    import openpyxl
+    from openpyxl.comments import Comment
+    from openpyxl.styles import PatternFill
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Mapa předkládání"])
+    ws.append(["Číslo povinnosti", "Souvisí s číslem povinnosti", "Označení", "Druh", "Způsob vyřízení", "Výskyt", "Lhůta", "Orgán", "Obsah povinnosti",
+               "Bližší určení obsahu", "Odpovědný subjekt", "Schvalovatel 1", "Schvalovatel 2", "Zdroje povinnosti", "Proces", "Reporting ČNB", "Reporting JTFG"])
+    for n, (src, color) in enumerate([("čl. 1 stanov", "EBDBA6"), ("není povinné schvalovat", "DAD6CD"), ("čl. 3 stanov", "E6B796"), ("čl. 4 stanov", "CBD9E0")]):
+        ws.append([801 + n, None, f"Řádek {n}", "Periodická zpráva", "schválení", "1 x ročně", "30. 6.", "valná hromada", "x", "y", "", "", "", src, "p", "", ""])
+        c = ws.cell(row=3 + n, column=14)
+        c.fill = PatternFill("solid", fgColor="00" + color)
+        if n == 0:
+            c.comment = Comment("Původně čl. 12.1", "test")
+    p = tmp_path / "barvy.xlsx"
+    wb.save(p)
+    opts = {"verze": "NZ 1021/2026", "ucinnost_od": "2026-10-01", "overeno_dne": "2026-11-09"}
+    r = client.post("/api/import/preview", params=opts, files={"file": ("barvy.xlsx", p.read_bytes())}).json()
+    st = {x["code"]: x["status"] for x in r["rows"]}
+    # žlutá a modrá se čitelným zdrojem = potvrzeno po doplnění; šedá a oranžová zůstávají K ověření
+    assert st == {"MAPA-801": "potvrzeno", "MAPA-802": "k_overeni", "MAPA-803": "k_overeni", "MAPA-804": "potvrzeno"}
+    client.post("/api/import/commit", json={"token": r["token"]})
+    o = next(x for x in client.get("/api/obligations", params={"limit": 500}).json()["items"] if x["code"] == "MAPA-801")
+    assert o["confirmed"] and o["source_version"] == "NZ 1021/2026" and "Původně čl. 12.1" in o["exceptions"]
+    # bez doplnění je vše K ověření a částečné doplnění se odmítne
+    r2 = client.post("/api/import/preview", files={"file": ("barvy.xlsx", p.read_bytes())}).json()
+    assert r2["summary"]["k_overeni"] == 4
+    assert client.post("/api/import/preview", params={"verze": "x"}, files={"file": ("barvy.xlsx", p.read_bytes())}).status_code == 422

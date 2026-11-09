@@ -218,12 +218,16 @@ window.delMeet = async id => { changed(await api(`/api/meetings/${id}`, {method:
 async function importView() {
   const hist = await api('/api/import/history');
   view.innerHTML = `<h1>Import mapy předkládání</h1><div class="card"><p>Nahrajte schválenou mapu (XLSX nebo CSV). Před uložením uvidíte náhled, chyby po řádcích a možné duplicity. Opakovaný import stejného souboru záznamy nezdvojí.
-   <a href="/api/import/template.csv">Stáhnout šablonu CSV</a></p><input type="file" id="f" accept=".xlsx,.csv"> <button class="btn pri" id="pv">Zobrazit náhled</button></div><div id="pvout"></div>
+   <a href="/api/import/template.csv">Stáhnout šablonu CSV</a></p><input type="file" id="f" accept=".xlsx,.csv"> <button class="btn pri" id="pv">Zobrazit náhled</button>
+   <details style="margin-top:10px"><summary>Doplnit verzi, účinnost a ověření (jen pokud jste mapu skutečně ověřili)</summary>
+   <p class="mut">Platí pro řádky s čitelným a dohledaným zdrojem; ostatní zůstanou K ověření. Vyplňte všechna tři pole.</p>
+   <div class="row"><input id="o_zdroj" placeholder="Název zdroje (volitelné)"><input id="o_verze" placeholder="Verze, např. NZ 1021/2026"><label>Účinnost od <input type="date" id="o_uc"></label><label>Ověřeno dne <input type="date" id="o_ov"></label></div></details></div><div id="pvout"></div>
    <h2>Historie importů</h2><div class="card"><table><tr><th>Soubor</th><th>Kdy</th><th>Nových</th><th>Změněných</th><th>Beze změny</th><th>Přeskočeno</th></tr>${hist.map(h => `<tr><td>${esc(h.filename)}</td><td>${esc(h.imported_at)}</td><td>${h.created}</td><td>${h.updated}</td><td>${h.unchanged}</td><td>${h.skipped}</td></tr>`).join('')}</table></div>`;
   $('#pv').onclick = async () => {
     const f = $('#f').files[0]; if (!f) return toast('Vyberte soubor.');
     const fd = new FormData(); fd.append('file', f);
-    let r; try { r = await api('/api/import/preview', {method: 'POST', body: fd}); } catch (e) { return toast(e.message); }
+    const qs = new URLSearchParams({zdroj: $('#o_zdroj').value, verze: $('#o_verze').value, ucinnost_od: $('#o_uc').value, overeno_dne: $('#o_ov').value});
+    let r; try { r = await api('/api/import/preview?' + qs, {method: 'POST', body: fd}); } catch (e) { return toast(e.message); }
     const s = r.summary, lbl = {new: 'nový', update: 'změna', unchanged: 'beze změny', error: 'chyba', duplicate: 'duplicita'};
     $('#pvout').innerHTML = `<div class="card"><b>${esc(r.filename)}</b> (rozpoznaný formát: ${r.layout === 'ecru' ? 'mapa předkládání' : 'šablona'})
      ${r.already_imported ? '<div class="badge warn">Tento soubor už byl importován – uložení nic nezdvojí.</div>' : ''}
