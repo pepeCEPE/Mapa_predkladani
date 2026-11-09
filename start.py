@@ -10,6 +10,23 @@ import webbrowser
 PORT = 8000
 URL = f"http://127.0.0.1:{PORT}"
 
+import os
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+os.chdir(HERE)
+VENV = HERE / ".venv"
+VPY = VENV / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+if Path(sys.prefix).resolve() != VENV.resolve():
+    # vlastní izolované prostředí (funguje i s Pythonem z Homebrew, který nepovoluje globální instalaci)
+    if not VPY.exists():
+        print("Vytvářím prostředí aplikace…")
+        if subprocess.run([sys.executable, "-m", "venv", str(VENV)]).returncode:
+            print("\nNepodařilo se vytvořit prostředí. Je nainstalovaný Python 3.10 nebo novější?")
+            input("Stiskněte Enter pro zavření…")
+            sys.exit(1)
+    sys.exit(subprocess.call([str(VPY), str(Path(__file__).resolve())]))
+
 print("Instaluji závislosti (poprvé to chvíli trvá)…")
 r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"])
 if r.returncode:

@@ -12,9 +12,15 @@ Aplikace odpovídá na otázku: **co musí který orgán projednat nebo schváli
 
 ## Spuštění
 Potřebujete Python 3.10+ (https://www.python.org/downloads/, na Windows zaškrtněte „Add Python to PATH“).
-- **Windows:** rozbalte zip celý (ne jen otevřít v průzkumníku) a poklepejte na `run.bat`.
-- **macOS:** poklepejte na `start.command` (při prvním spuštění pravé tlačítko → Otevřít).
-- **Kdekoli:** v rozbalené složce `python start.py` (Linux/macOS i `./run.sh`).
+- **macOS (doporučeno):** rozbalte zip, otevřete Terminál a zadejte (cestu upravte podle umístění složky):
+  ```bash
+  cd ~/Downloads/mapa-predkladani
+  python3 start.py
+  ```
+  Pokud Mac nabídne instalaci „Command Line Tools“, potvrďte ji a příkaz pak zopakujte (nebo nainstalujte Python z https://www.python.org/downloads/).
+  Poklepání na `start.command` funguje také, ale macOS ho při prvním spuštění zablokuje – klikněte pravým tlačítkem → Otevřít.
+- **Windows:** poklepejte na `run.bat` (Python s volbou „Add Python to PATH“).
+- **Linux:** `python3 start.py` nebo `./run.sh`.
 
 Spouštěč nainstaluje závislosti a otevře prohlížeč na http://127.0.0.1:8000. Okno s aplikací nechte otevřené; zavřením se ukončí.
 ```bash
