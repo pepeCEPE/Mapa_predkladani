@@ -1,0 +1,72 @@
+[
+ {
+  "organ": "predstavenstvo",
+  "date": "2026-11-24",
+  "note": "DEMO"
+ },
+ {
+  "organ": "predstavenstvo",
+  "date": "2026-12-15",
+  "note": "DEMO"
+ },
+ {
+  "organ": "predstavenstvo",
+  "date": "2027-01-19",
+  "note": "DEMO"
+ },
+ {
+  "organ": "predstavenstvo",
+  "date": "2027-02-16",
+  "note": "DEMO"
+ },
+ {
+  "organ": "predstavenstvo",
+  "date": "2027-03-16",
+  "note": "DEMO"
+ },
+ {
+  "organ": "predstavenstvo",
+  "date": "2027-04-20",
+  "note": "DEMO"
+ },
+ {
+  "organ": "predstavenstvo",
+  "date": "2027-05-18",
+  "note": "DEMO"
+ },
+ {
+  "organ": "predstavenstvo",
+  "date": "2027-06-08",
+  "note": "DEMO"
+ },
+ {
+  "organ": "predstavenstvo",
+  "date": "2027-09-14",
+  "note": "DEMO"
+ },
+ {
+  "organ": "dozorci_rada",
+  "date": "2026-12-10",
+  "note": "DEMO"
+ },
+ {
+  "organ": "dozorci_rada",
+  "date": "2027-03-04",
+  "note": "DEMO"
+ },
+ {
+  "organ": "dozorci_rada",
+  "date": "2027-05-27",
+  "note": "DEMO"
+ },
+ {
+  "organ": "dozorci_rada",
+  "date": "2027-09-23",
+  "note": "DEMO"
+ },
+ {
+  "organ": "valna_hromada",
+  "date": "2027-06-24",
+  "note": "DEMO"
+ }
+]

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapa předkládání</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="brand">Mapa předkládání <small>ECRU investiční společnost</small></div>
+  <nav id="nav">
+    <a href="#home" data-v="home">Přehled</a>
+    <a href="#catalog" data-v="catalog">Katalog</a>
+    <a href="#program" data-v="program">Kontrola programu</a>
+    <a href="#calendar" data-v="calendar">Kalendář</a>
+    <a href="#import" data-v="import">Import</a>
+  </nav>
+  <label class="today">Dnes <input type="date" id="today"></label>
+</header>
+<div id="demo-banner" hidden></div>
+<main id="view"></main>
+<dialog id="detail"><div id="detail-body"></div><form method="dialog"><button class="btn">Zavřít</button></form></dialog>
+<div id="toast" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
