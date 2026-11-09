@@ -11,7 +11,7 @@ Aplikace odpovídá na otázku: **co musí který orgán projednat nebo schváli
 - Schválenou mapu ECRU naimportujte lokálně přes záložku Import; zůstane jen v lokální databázi.
 
 ## Spuštění
-Potřebujete Python 3.10+ (https://www.python.org/downloads/, na Windows zaškrtněte „Add Python to PATH“).
+Potřebujete Python 3.9 nebo novější (https://www.python.org/downloads/, na Windows zaškrtněte „Add Python to PATH“).
 - **macOS (doporučeno):** rozbalte zip, otevřete Terminál a zadejte (cestu upravte podle umístění složky):
   ```bash
   cd ~/Downloads/mapa-predkladani

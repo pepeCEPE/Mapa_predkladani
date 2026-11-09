@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -73,7 +75,7 @@ def _chain(db, duty_code, ref):
 
 
 @app.get("/api/search")
-def search(q: str, today: str | None = None, db=Depends(get_db)):
+def search(q: str, today: Optional[str] = None, db=Depends(get_db)):
     t = S.today_of(today)
     obs = S.load_obligations(db)
     by_id = {o["id"]: o for o in obs}
@@ -94,7 +96,7 @@ def search(q: str, today: str | None = None, db=Depends(get_db)):
 
 @app.get("/api/obligations")
 def obligations(q: str = "", organ: str = "", act_type: str = "", area: str = "", kind: str = "",
-                status: str = "", limit: int = 50, offset: int = 0, today: str | None = None, db=Depends(get_db)):
+                status: str = "", limit: int = 50, offset: int = 0, today: Optional[str] = None, db=Depends(get_db)):
     t = S.today_of(today)
     obs = S.load_obligations(db)
     if q:
@@ -109,7 +111,7 @@ def obligations(q: str = "", organ: str = "", act_type: str = "", area: str = ""
 
 
 @app.get("/api/obligations/{oid}")
-def obligation(oid: int, today: str | None = None, db=Depends(get_db)):
+def obligation(oid: int, today: Optional[str] = None, db=Depends(get_db)):
     t = S.today_of(today)
     r = db.execute("SELECT * FROM obligations WHERE id=?", (oid,)).fetchone()
     if not r:
@@ -154,7 +156,7 @@ def add_meeting(body: dict, db=Depends(get_db)):
 
 
 @app.delete("/api/meetings/{mid}")
-def del_meeting(mid: int, today: str | None = None, db=Depends(get_db)):
+def del_meeting(mid: int, today: Optional[str] = None, db=Depends(get_db)):
     t = S.today_of(today)
     before = _snapshot(db, t)
     db.execute("DELETE FROM meetings WHERE id=?", (mid,))
@@ -176,12 +178,12 @@ def recommend(body: dict, db=Depends(get_db)):
 
 
 @app.get("/api/dashboard")
-def dashboard(today: str | None = None, db=Depends(get_db)):
+def dashboard(today: Optional[str] = None, db=Depends(get_db)):
     return S.dashboard(db, S.today_of(today))
 
 
 @app.get("/api/calendar")
-def calendar(year: int | None = None, today: str | None = None, db=Depends(get_db)):
+def calendar(year: Optional[int] = None, today: Optional[str] = None, db=Depends(get_db)):
     t = S.today_of(today)
     y = year or t.year
     items = S.calendar_items(db, t, date(y, 1, 1), date(y, 12, 31))
