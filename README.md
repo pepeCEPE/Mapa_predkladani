@@ -11,11 +11,16 @@ Aplikace odpovídá na otázku: **co musí který orgán projednat nebo schváli
 - Schválenou mapu ECRU naimportujte lokálně přes záložku Import; zůstane jen v lokální databázi.
 
 ## Spuštění
+Potřebujete Python 3.10+ (https://www.python.org/downloads/, na Windows zaškrtněte „Add Python to PATH“).
+- **Windows:** rozbalte zip celý (ne jen otevřít v průzkumníku) a poklepejte na `run.bat`.
+- **macOS:** poklepejte na `start.command` (při prvním spuštění pravé tlačítko → Otevřít).
+- **Kdekoli:** v rozbalené složce `python start.py` (Linux/macOS i `./run.sh`).
+
+Spouštěč nainstaluje závislosti a otevře prohlížeč na http://127.0.0.1:8000. Okno s aplikací nechte otevřené; zavřením se ukončí.
 ```bash
-./run.sh            # nainstaluje závislosti a spustí http://127.0.0.1:8000
 python3 -m pytest   # testy
 ```
-Při prvním startu se vytvoří `data/app.db` a načtou se demo data (`data/demo_map.csv`, `data/demo_meetings.json`). Znovu: `python3 -m app.seed --reset`.
+Při prvním startu se vytvoří `data/app.db` a načtou se **demo data** (schválenou mapu nahrajete záložkou Import – viz níže) (`data/demo_map.csv`, `data/demo_meetings.json`). Znovu: `python3 -m app.seed --reset`.
 
 ## Funkce
 - **Přehled** – vyhledávání (bez diakritiky, synonyma: „bonus“ → pohyblivá složka odměny), příští zasedání s počtem povinných bodů, povinnosti na 90 dní, tlačítko „Prověřit program zasedání“.
