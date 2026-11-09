@@ -4,6 +4,12 @@ Aplikace odpovídá na otázku: **co musí který orgán projednat nebo schváli
 
 > **Data v repozitáři jsou syntetická (DEMO).** Schválená mapa ECRU zde není. Interní podklady, databáze s reálnými daty a přístupové údaje se do repozitáře neukládají (viz `.gitignore`).
 
+## Umístění a práce s repozitářem
+- GitHub: https://github.com/pepeCEPE/Mapa_predkladani (soukromý). Vývojová větev: `claude/mapa-predkladani-v1`; do `main` jen přes pull request.
+- Google Disk (účet projektu): Můj disk → „Mapa schvalování“ – archiv zdrojových kódů a tento README. Zdrojem pravdy pro kód je GitHub, na Disk se kód neukládá průběžně.
+- Do GitHubu patří jen kód, dokumentace a syntetická data. Interní podklady ECRU (xlsx), databáze (`data/*.db`) a přístupové údaje se neukládají – hlídá to `.gitignore`.
+- Schválenou mapu ECRU naimportujte lokálně přes záložku Import; zůstane jen v lokální databázi.
+
 ## Spuštění
 ```bash
 ./run.sh            # nainstaluje závislosti a spustí http://127.0.0.1:8000
