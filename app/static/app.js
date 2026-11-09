@@ -75,7 +75,7 @@ async function home() {
   <div id="results"></div>
   <h2>Příští zasedání</h2><div class="grid">${dash.next_meetings.map(m => `<div class="card"><div class="mut">${esc(m.organ_label)}</div>
    ${m.date ? `<div class="big">${cz(m.date)}</div><div><b>${m.must}</b> povinných bodů · ${m.check} k prověření · ${m.suggest} vhodných</div>
-   <button class="btn sm" onclick="goCheck('${m.organ}','${m.date}')">Prověřit program</button>` : '<div class="mut">Zasedání není v kalendáři.</div>'}</div>`).join('')}</div>
+   <button class="btn sm" onclick="goCheck('${m.organ}','${m.date}')">Prověřit program</button>` : '<div class="mut">Termín zasedání není zadán.</div><button class="btn sm" onclick="location.hash=\'#program\'">Zadat datum a prověřit</button>'}</div>`).join('')}</div>
   <p><button class="btn pri" onclick="location.hash='#program'">Prověřit program zasedání</button></p>
   <h2>Blížící se povinnosti (90 dní)</h2>
   ${upcomingTable(dash.upcoming)}
@@ -93,7 +93,7 @@ function upcomingTable(items) {
   if (!items.length) return '<p class="mut">Žádné povinnosti ve sledovaném období.</p>';
   return `<div class="card"><table><tr><th>Povinnost</th><th>Orgán</th><th>Závazná lhůta</th><th>Podklady do</th><th>Doporučené zasedání</th><th></th></tr>${items.map(i => `<tr class="click" onclick="showDetail(${i.obligation_id})">
    <td>${esc(i.subject)}</td><td>${esc(i.organ_label)}</td><td class="k-dead">${cz(i.deadline)}</td><td class="k-prep">${cz(i.prep_date)}</td>
-   <td class="k-rec">${i.plan_status === 'ok' ? cz(i.recommended) : `<span class="badge ${i.plan_status === 'conflict' ? 'bad' : 'warn'}">${i.plan_status === 'conflict' ? 'Konflikt' : i.plan_status === 'incomplete' ? 'Kalendář neúplný' : '—'}</span>`}</td>
+   <td class="k-rec">${i.plan_status === 'ok' ? cz(i.recommended) : i.plan_status === 'no_calendar' ? '<span class="mut">bez zasedání</span>' : `<span class="badge ${i.plan_status === 'conflict' ? 'bad' : 'warn'}">${i.plan_status === 'conflict' ? 'Konflikt' : i.plan_status === 'incomplete' ? 'Kalendář neúplný' : '—'}</span>`}</td>
    <td>${i.notice_on ? '<span class="badge">dřívější termín možný</span>' : ''}</td></tr>`).join('')}</table></div>`;
 }
 window.goCheck = (organ, date) => { sessionStorage.setItem('pre', JSON.stringify({organ, date})); location.hash = '#program'; if (location.hash === '#program') route(); };
@@ -176,7 +176,7 @@ function renderOut() {
    ${sec('must', 'Musí být zařazeno', 'Ověřené povinné body, které nelze bezpečně odložit na další zasedání. Zařazení do programu samo o sobě neznamená splnění povinnosti.')}
    ${sec('check', 'Prověřte, zda se vás týká', 'Použitelnost není potvrzena (odpověď „Nevím“, podmíněné nebo neověřené pravidlo).')}
    ${sec('suggest', 'Mohlo by být vhodné zařadit', 'Body vhodné k přípravě nebo projednání s předstihem.')}
-   ${r.follow_ups.length ? `<h2>Navazující kroky jiných orgánů</h2><div class="card">${r.follow_ups.map(f => `<div>${esc(f.subject)} – ${esc(f.organ_label)} (${esc(f.role || f.act_type)}) ${f.planned ? cz(f.planned) : '<span class="badge warn">bez zasedání v kalendáři</span>'}</div>`).join('')}</div>` : ''}
+   ${r.follow_ups.length ? `<h2>Navazující kroky jiných orgánů</h2><div class="card">${r.follow_ups.map(f => `<div>${esc(f.subject)} – ${esc(f.organ_label)} (${esc(f.role || f.act_type)}) ${f.planned ? cz(f.planned) : '<span class="mut">termín zasedání není zadán</span>'}</div>`).join('')}</div>` : ''}
    <h2>Návrh programu</h2><div class="card" id="draft"></div>`;
   renderDraft();
 }
@@ -199,14 +199,14 @@ async function calendar() {
   const months = ['leden', 'únor', 'březen', 'duben', 'květen', 'červen', 'červenec', 'srpen', 'září', 'říjen', 'listopad', 'prosinec'];
   view.innerHTML = `<h1>Kalendář</h1><div class="row"><button class="btn" onclick="CY--;route()">‹</button><b>${CY}</b><button class="btn" onclick="CY++;route()">›</button>
    <span class="mut">Legenda: <span class="k-dead">závazná lhůta</span> · <span class="k-prep">podklady do</span> · <span class="k-rec">doporučené projednání</span></span></div>
-   ${c.incomplete.length ? `<div class="card" style="background:var(--warnbg)">Kalendář není úplný: v roce ${CY} nejsou zadána zasedání orgánů: ${c.incomplete.map(o => META.organs[o]).join(', ')}.</div>` : ''}
+   ${c.no_calendar ? `<div class="card" style="background:var(--blue)">Termíny zasedání nejsou zadány, počítá se jen s lhůtami. Zasedání můžete kdykoli doplnit níže – doporučení se pak dopočtou.</div>` : c.incomplete.length ? `<div class="card" style="background:var(--warnbg)">Kalendář není úplný: v roce ${CY} nejsou zadána zasedání orgánů: ${c.incomplete.map(o => META.organs[o]).join(', ')}.</div>` : ''}
    <div class="cal">${months.map((m, i) => { const mm = String(i + 1).padStart(2, '0');
      const dl = c.items.filter(x => x.deadline.slice(5, 7) === mm), mt = c.meetings.filter(x => x.date.slice(5, 7) === mm);
      return `<div class="m"><h4>${m}</h4>${mt.map(x => `<div class="ev">🗓 <b>${esc(x.organ_label)}</b> ${cz(x.date)}</div>`).join('')}
      ${dl.map(x => `<div class="ev" onclick="showDetail(${x.obligation_id})" style="cursor:pointer"><span class="k-dead">${cz(x.deadline)}</span> ${esc(x.subject)} <span class="mut">(${esc(x.organ_label)})</span>${x.confirmed ? '' : ' <span class="badge warn">K ověření</span>'}</div>`).join('')}</div>`; }).join('')}</div>
    <h2>Doporučení termínů</h2><div class="card"><table><tr><th>Povinnost</th><th>Orgán</th><th class="k-dead">Závazná lhůta</th><th class="k-prep">Podklady do</th><th class="k-rec">Doporučené zasedání</th><th>Předchozí vhodné</th><th>Stav</th></tr>
    ${c.items.map(x => `<tr class="click" onclick="showDetail(${x.obligation_id})"><td>${esc(x.subject)}</td><td>${esc(x.organ_label)}</td><td>${cz(x.deadline)}</td><td>${cz(x.prep_date)}</td><td><b>${cz(x.recommended)}</b></td><td>${cz(x.previous)}</td>
-   <td>${x.plan_status === 'ok' ? '<span class="badge ok">OK</span>' : x.plan_status === 'conflict' ? `<span class="badge bad">Konflikt</span><div class="mut">${esc(x.reasons[0] || '')}</div>` : x.plan_status === 'incomplete' ? `<span class="badge warn">Kalendář neúplný</span><div class="mut">${esc(x.reasons[0] || '')}</div>` : '<span class="mut">uplynulo</span>'}${x.confirmed ? '' : ' <span class="badge warn">K ověření</span>'}</td></tr>`).join('')}</table></div>
+   <td>${x.plan_status === 'ok' ? '<span class="badge ok">OK</span>' : x.plan_status === 'conflict' ? `<span class="badge bad">Konflikt</span><div class="mut">${esc(x.reasons[0] || '')}</div>` : x.plan_status === 'incomplete' ? `<span class="badge warn">Kalendář neúplný</span><div class="mut">${esc(x.reasons[0] || '')}</div>` : x.plan_status === 'no_calendar' ? '<span class="mut">jen lhůta</span>' : '<span class="mut">uplynulo</span>'}${x.confirmed ? '' : ' <span class="badge warn">K ověření</span>'}</td></tr>`).join('')}</table></div>
    <h2>Zasedání</h2><div class="card"><div class="row"><select id="mo">${Object.entries(META.organs).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select><input type="date" id="md"><input id="mn" placeholder="Poznámka"><button class="btn pri" id="ma">Přidat zasedání</button></div>
    <table>${ms.map(m => `<tr><td>${esc(m.organ_label)}</td><td>${cz(m.date)}</td><td>${esc(m.note || '')}</td><td><button class="btn sm" onclick="delMeet(${m.id})">Smazat</button></td></tr>`).join('')}</table></div>`;
   $('#ma').onclick = async () => { try { const r = await post('/api/meetings', {organ: $('#mo').value, date: $('#md').value, note: $('#mn').value}); changed(r); } catch (e) { toast(e.message); } };
@@ -243,8 +243,10 @@ async function importView() {
 /* ---------- router ---------- */
 function banner() {
   const b = $('#demo-banner');
-  b.hidden = !META.demo_count;
-  b.textContent = META.demo_count ? `Zobrazena DEMONSTRAČNÍ data (${META.demo_count} syntetických pravidel) – nejde o schválenou mapu ECRU.` : '';
+  const t = [];
+  if (META.demo_count) t.push(`Zobrazena DEMONSTRAČNÍ data (${META.demo_count} syntetických pravidel) – nejde o schválenou mapu ECRU.`);
+  if (!META.has_meetings) t.push('Termíny zasedání nejsou zadány – aplikace počítá jen s lhůtami.');
+  b.hidden = !t.length; b.textContent = t.join(' ');
 }
 const routes = {home, catalog, program, calendar, import: importView};
 async function route() {

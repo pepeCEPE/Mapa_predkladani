@@ -30,5 +30,8 @@ Při prvním startu se vytvoří `data/app.db` a načtou se demo data (`data/dem
 - Doporučení = **poslední zasedání**, na kterém se celý řetězec (včetně předchozích a navazujících kroků jiných orgánů) ještě stihne. Termín přípravy = zasedání − `priprava_dnu`.
 - Účetní období končí 31. 12. (nastavitelné `PUT /api/settings`).
 
+## Režim bez termínů zasedání
+Pokud v kalendáři nejsou zadána žádná zasedání, aplikace nedoporučuje zasedání, nehlásí neúplný kalendář u každé povinnosti a počítá jen s lhůtami. Kontrola programu pak řadí povinnosti podle lhůty v pokrývaném období (výchozí: 90 dní od zasedání). Po zadání zasedání se doporučení dopočtou.
+
 ## Co zatím není
 Evidence skutečného plnění povinností, e-mailové připomínky (zatím jen v aplikaci), uživatelé a práva, schválená mapa ECRU (nutno naimportovat).

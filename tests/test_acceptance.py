@@ -255,3 +255,23 @@ def test_import_mapy_cte_barvy_komentare_a_doplneni_verze(client, tmp_path):
     r2 = client.post("/api/import/preview", files={"file": ("barvy.xlsx", p.read_bytes())}).json()
     assert r2["summary"]["k_overeni"] == 4
     assert client.post("/api/import/preview", params={"verze": "x"}, files={"file": ("barvy.xlsx", p.read_bytes())}).status_code == 422
+
+
+def test_rezim_bez_terminu_zasedani(client):
+    for m in client.get("/api/meetings").json():
+        client.delete(f"/api/meetings/{m['id']}")
+    assert client.get("/api/meta").json()["has_meetings"] is False
+    r = client.post("/api/program/check", json={"organ": "valna_hromada", "date": "2027-06-24", "covers_until": "2027-07-31",
+                                                  "today": "2027-02-01", "answers": {}}).json()
+    assert r["no_calendar"] is True
+    titles = [i["title"] for i in r["must"]]
+    assert "Schválení řádné účetní závěrky" in titles and "Určení auditora" in titles       # lhůta 30. 6. v období
+    assert all(i["confirmed"] for i in r["must"])
+    assert all("termíny dalších zasedání nejsou zadány" in i["reasons"][0] for i in r["must"])
+    cal = client.get("/api/calendar", params={"year": 2027, "today": "2027-02-01"}).json()
+    assert cal["no_calendar"] and all(i["plan_status"] in ("no_calendar", "past") and i["recommended"] is None for i in cal["items"])
+    assert all(i["deadline"] for i in cal["items"])
+    d = client.get("/api/dashboard", params={"today": "2027-02-01"}).json()
+    assert d["upcoming"] and all(m["date"] is None for m in d["next_meetings"])
+    p = client.post("/api/recommend", json={"duty_code": "ZAV", "today": "2027-02-01"}).json()
+    assert p["status"] == "no_calendar" and p["deadlines"][-1] == "2027-06-30"

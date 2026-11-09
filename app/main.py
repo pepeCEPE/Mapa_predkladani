@@ -52,7 +52,8 @@ def meta(db=Depends(get_db)):
     cols = {c: sorted({r[0] for r in db.execute(f"SELECT DISTINCT {c} FROM obligations WHERE {c} IS NOT NULL AND {c}!=''")}) for c in ("act_type", "area")}
     return {"organs": E.ORGANS, "program_organs": E.PROGRAM_ORGANS, "checklist": S.CHECKLIST,
             "acts": cols["act_type"], "areas": cols["area"], "count": n["c"], "demo_count": n["d"] or 0,
-            "confirmed_count": n["ok"] or 0, "fy_end": S.fy_of(db), "today": E.iso(date.today())}
+            "confirmed_count": n["ok"] or 0,
+            "has_meetings": db.execute("SELECT COUNT(*) FROM meetings").fetchone()[0] > 0, "fy_end": S.fy_of(db), "today": E.iso(date.today())}
 
 
 @app.put("/api/settings")
@@ -187,6 +188,7 @@ def calendar(year: int | None = None, today: str | None = None, db=Depends(get_d
     ms = [dict(r) | {"organ_label": E.ORGANS.get(r["organ"])} for r in
           db.execute("SELECT * FROM meetings WHERE date BETWEEN ? AND ? ORDER BY date", (f"{y}-01-01", f"{y}-12-31"))]
     return {"year": y, "items": items, "meetings": ms,
+            "no_calendar": db.execute("SELECT COUNT(*) FROM meetings").fetchone()[0] == 0,
             "incomplete": [o for o in E.PROGRAM_ORGANS if not any(m["organ"] == o for m in ms)]}
 
 

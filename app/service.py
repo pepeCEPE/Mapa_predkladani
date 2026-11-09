@@ -79,6 +79,13 @@ def public(ob: dict, ref: date | None = None) -> dict:
 
 def plan_duty(steps: list[dict], ref: date, meetings, today: date, fy: str, deadlines=None) -> dict:
     dls = deadlines if deadlines is not None else E.duty_deadlines(steps, ref, fy)
+    if not any(meetings.values()):
+        return {"status": "no_calendar", "best": None, "previous": None, "options": [], "warnings": [],
+                "reasons": ["Termíny zasedání nejsou zadány – doporučení zasedání se nepočítá, platí jen lhůty."],
+                "deadlines": [E.iso(x) for x in dls],
+                "steps": [{"id": x["id"], "step_no": x["step_no"], "organ": x["organ"], "organ_label": E.ORGANS.get(x["organ"]),
+                           "role": x["role"], "act_type": x["act_type"], "deadline": E.iso(dls[i]), "date": None,
+                           "prep_date": None, "previous_date": None} for i, x in enumerate(steps)]}
     chain = [{"organ": s["organ"], "prep_days": s["prep_days"] or 0, "gap_days": s["gap_days"] or 0,
               "deadline": dls[i], "label": s.get("role") or s["act_type"]} for i, s in enumerate(steps)]
     # odstup se vztahuje k předchozímu kroku; první krok ho nemá
@@ -124,6 +131,7 @@ def check_program(db, organ: str, mdate: date, covers_until: date | None, answer
             return "neznámý"
         return "ano" if ob["id"] in saved or norm(ob.get("agenda_title") or ob["subject"]) in saved_titles else "ne"
 
+    nocal = not any(known.values())
     items: dict[int, dict] = {}
     follow = []
     warnings = []
@@ -179,6 +187,24 @@ def check_program(db, organ: str, mdate: date, covers_until: date | None, answer
                                        "role": st["role"], "act_type": st["act_type"], "planned": st["date"]})
             continue
         # periodická povinnost
+        if nocal:
+            for s in organs_in:
+                if not E.has_deadline(s):
+                    add(s, "check", "Lhůta není v pravidle určena – prověřte, zda a kdy bod zařadit.")
+                    continue
+                D = E.next_occurrence(s, today, fy)
+                if D is None:
+                    continue
+                late = ""
+                if D < mdate:
+                    late = f" Pozor: lhůta {E.cz(D)} uplyne před tímto zasedáním."
+                if D <= covers_until:
+                    cat = "must" if s["applicability"] == "always" else "check"
+                    why = f"Lhůta {E.cz(D)} spadá do pokrývaného období (do {E.cz(covers_until)}); termíny dalších zasedání nejsou zadány.{late}"
+                    add(s, cat, why, None, [late.strip()] if late else None, D, None)
+                elif D <= covers_until + timedelta(days=90):
+                    add(s, "suggest", f"Lhůta {E.cz(D)} je krátce za pokrývaným obdobím – vhodné připravit s předstihem.", None, None, D, None)
+            continue
         dls = E.duty_deadlines(steps, mdate, fy)
         plan = plan_duty(steps, mdate, meetings, today, fy, dls)
         for i, s in enumerate(steps):
@@ -233,7 +259,7 @@ def check_program(db, organ: str, mdate: date, covers_until: date | None, answer
     return {"organ": organ, "organ_label": E.ORGANS[organ], "meeting_date": E.iso(mdate),
             "covers_until": E.iso(covers_until), "next_meeting": E.iso(next_meeting),
             "saved_program": bool(prog), "today": E.iso(today), **res, "follow_ups": follow,
-            "warnings": warnings, "counts": {k: len(v) for k, v in res.items()}}
+            "warnings": warnings, "no_calendar": nocal, "counts": {k: len(v) for k, v in res.items()}}
 
 
 def dashboard(db, today: date) -> dict:
