@@ -17,7 +17,7 @@ NATIVE_FIELDS = ["kod", "kod_povinnosti", "krok", "role", "predmet", "organ", "u
                  "lhuta_text", "priprava_dnu", "odstup_dnu", "podklady", "bod_programu", "navrh_usneseni",
                  "spoustec", "klicova_slova", "zdroj", "clanek", "verze", "ucinnost_od", "overeno_dne", "stav",
                  "duvod_k_overeni"]
-ACTS = ["schválení", "projednání", "rozhodnutí", "vyhodnocení", "konání", "vzetí na vědomí", "vyjádření",
+ACTS = ["informování", "schválení", "projednání", "rozhodnutí", "vyhodnocení", "konání", "vzetí na vědomí", "vyjádření",
         "předložení"]
 TRIGGERS = ["member_change", "remuneration", "office_contract", "major_transaction", "outsourcing",
             "internal_regulation", "conflict_of_interest", "auditor_change"]
@@ -30,7 +30,8 @@ DB_FIELDS = ["code", "duty_code", "step_no", "role", "subject", "organ", "act_ty
              "applicability", "conditions", "exceptions", "follow_up", "deadline_kind", "deadline_dates",
              "deadline_months", "deadline_text", "prep_days", "gap_days", "documents", "agenda_title",
              "resolution_text", "trigger_key", "keywords", "status", "verify_reason", "source_name",
-             "source_ref", "source_version", "effective_from", "verified_on"]
+             "source_ref", "source_version", "effective_from", "verified_on", "responsible", "submitter", "nature",
+             "approvers"]
 
 
 def _s(v):
@@ -41,32 +42,72 @@ def _s(v):
     return str(v).strip()
 
 
-def read_table(filename: str, data: bytes):
-    """Vrátí (hlavičky, [(číslo řádku, [hodnoty])], layout)."""
-    rows = []
+def _detect(rows):
+    for idx, (ln, r) in enumerate(rows[:10]):
+        hn = {norm(c) for c in r if c}
+        if ECRU_HEADERS <= hn:
+            return {"headers": [norm(c) for c in r], "rows": rows[idx + 1:], "layout": "ecru"}
+        nat = {norm(f.replace("_", " ")) for f in NATIVE_FIELDS}
+        if len(hn & nat) >= 6:
+            return {"headers": [norm(c) for c in r], "rows": rows[idx + 1:], "layout": "native"}
+    return None
+
+
+def _numbers(scope: str) -> list[int]:
+    """„Č. 58 – …“, „Č. 63 a 89“, „Č. 85, 91, 155–156“ -> čísla povinností."""
+    sc = scope.strip()
+    if not re.match(r"[ČC]\.", sc):
+        return []
+    sc = re.sub(r"^[ČC]\.\s*", "", sc).split(" – ")[0]
+    out = []
+    for m in re.finditer(r"(\d+)\s*[–-]\s*(\d+)|(\d+)", sc):
+        if m.group(3):
+            out.append(int(m.group(3)))
+        else:
+            out += list(range(int(m.group(1)), int(m.group(2)) + 1))
+    return out
+
+
+def _read_findings(rows) -> list[dict]:
+    for idx, (ln, r) in enumerate(rows[:8]):
+        hn = [norm(c) for c in r]
+        if "zjisteni" in hn and any(x.startswith("existujici polozka") for x in hn):
+            out = []
+            ci = {name: hn.index(name) for name in hn if name}
+            iz = hn.index("zjisteni")
+            ie = next(i for i, x in enumerate(hn) if x.startswith("existujici polozka"))
+            for _, row in rows[idx + 1:]:
+                if len(row) > iz and row[iz]:
+                    out.append({"area": row[0], "scope": row[ie], "text": row[iz], "numbers": _numbers(row[ie])})
+            return out
+    return []
+
+
+def read_tables(filename: str, data: bytes):
+    """Vrátí ([{sheet, index, headers, rows, layout}], zjištění z kontroly mapy)."""
+    sheets = []
     if filename.lower().endswith((".xlsx", ".xlsm")):
         import openpyxl
         wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True, read_only=True)
-        ws = wb.worksheets[0]
-        for i, r in enumerate(ws.iter_rows(values_only=True), start=1):
-            rows.append((i, [_s(c) for c in r]))
+        for ws in wb.worksheets:
+            sheets.append((ws.title, [(i, [_s(c) for c in r]) for i, r in enumerate(ws.iter_rows(values_only=True), start=1)]))
     else:
         text = data.decode("utf-8-sig", errors="replace")
         try:
             dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
         except csv.Error:
             dialect = csv.excel
-        for i, r in enumerate(csv.reader(io.StringIO(text), dialect), start=1):
-            rows.append((i, [c.strip() for c in r]))
-    # hlavička: první řádek v prvních 10, který odpovídá známým názvům
-    for idx, (ln, r) in enumerate(rows[:10]):
-        hn = {norm(c) for c in r if c}
-        if ECRU_HEADERS <= hn:
-            return [norm(c) for c in r], rows[idx + 1:], "ecru"
-        nat = {norm(f.replace("_", " ")) for f in NATIVE_FIELDS}
-        if len(hn & nat) >= 6:
-            return [norm(c) for c in r], rows[idx + 1:], "native"
-    raise ValueError("Nepodařilo se rozpoznat hlavičku souboru (očekávám šablonu nebo sloupce mapy předkládání).")
+        sheets.append(("csv", [(i, [c.strip() for c in r]) for i, r in enumerate(csv.reader(io.StringIO(text), dialect), start=1)]))
+    tables, findings = [], []
+    for idx, (name, rows) in enumerate(sheets):
+        t = _detect(rows)
+        if t:
+            tables.append({"sheet": name, "index": idx, **t})
+        else:
+            findings += _read_findings(rows)
+    if not tables:
+        raise ValueError("Nepodařilo se rozpoznat hlavičku souboru (očekávám šablonu nebo sloupce mapy předkládání).")
+    return tables, findings
 
 
 def _classify_fill(rgb: str | None) -> str | None:
@@ -92,12 +133,12 @@ def _classify_fill(rgb: str | None) -> str | None:
     return None
 
 
-def read_meta(filename: str, data: bytes, col: int) -> dict[int, dict]:
+def read_meta(filename: str, data: bytes, col: int, sheet: int = 0) -> dict[int, dict]:
     """Řádek -> {fill, comment} pro buňku zdroje (jen XLSX)."""
     if not filename.lower().endswith((".xlsx", ".xlsm")):
         return {}
     import openpyxl
-    ws = openpyxl.load_workbook(io.BytesIO(data)).worksheets[0]
+    ws = openpyxl.load_workbook(io.BytesIO(data)).worksheets[sheet]
     out = {}
     for row in ws.iter_rows(min_row=1):
         c = row[col] if col < len(row) else None
@@ -109,7 +150,7 @@ def read_meta(filename: str, data: bytes, col: int) -> dict[int, dict]:
 
 
 def _organ(v):
-    n = norm(v)
+    n = norm(re.sub(r"\(.*?\)", " ", v or "", flags=re.S))
     return ORGAN_ALIASES.get(n)
 
 
@@ -122,10 +163,35 @@ def _split_dates(text):
     return ";".join(dict.fromkeys(out))
 
 
+MONTHS = {"ledna": 1, "unora": 2, "brezna": 3, "dubna": 4, "kvetna": 5, "cervna": 6, "cervence": 7, "srpna": 8,
+          "zari": 9, "rijna": 10, "listopadu": 11, "prosince": 12}
+
+
+def _month_end(text):
+    """„do konce března“ -> 3-31."""
+    m = re.search(r"do konce (\w+)", norm(text))
+    if m and m.group(1) in MONTHS:
+        mo = MONTHS[m.group(1)]
+        return f"{mo}-{[31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1]}"
+    return ""
+
+
+VP_RE = re.compile(r"^(VP_\d+(?:_\d+)?)\s+(.+?)\s*\(účinnost od\s*(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})\)\s*,\s*(.+)$", re.S)
+
+
+def _parse_vp(src: str):
+    m = VP_RE.match((src or "").strip())
+    if not m:
+        return None
+    code, name, d, mo, y, art = m.groups()
+    return {"zdroj": f"{code} {name}", "clanek": art.strip(), "ucinnost_od": f"{int(y):04d}-{int(mo):02d}-{int(d):02d}",
+            "verze": f"{code}, účinnost od {int(d)}. {int(mo)}. {y}"}
+
+
 def _act(v):
     n = norm(v)
     for key, val in (("schval", "schválení"), ("projedn", "projednání"), ("rozhod", "rozhodnutí"),
-                     ("vyhodnoc", "vyhodnocení"), ("vedomi", "vzetí na vědomí"), ("vyjad", "vyjádření"),
+                     ("vyhodnoc", "vyhodnocení"), ("informov", "informování"), ("vedomi", "vzetí na vědomí"), ("vyjad", "vyjádření"),
                      ("predlo", "předložení"), ("kon", "konání")):
         if key in n:
             return val
@@ -136,9 +202,9 @@ def _from_ecru(h: list[str], r: list[str]) -> dict:
     g = lambda name: _s(r[h.index(name)]) if name in h and h.index(name) < len(r) else ""
     num = g("cislo povinnosti")
     occ, lhuta = g("vyskyt"), g("lhuta")
-    ev = bool(re.search(r"ad hoc|v pripade|podle potreby|pri |po zasedani|na zadost|kdykoli|jednorazove",
-                        norm(occ + " " + lhuta)))
-    dates = _split_dates(lhuta)
+    ev = bool(re.search(r"ad hoc|v pripade|podle potreby|pri |po zasedani|na zadost|kdykoli|jednorazove|po provedeni|pred rozhodnutim",
+                        norm(occ + " " + lhuta))) or norm(g("druh")).startswith("mimoradn")
+    dates = _split_dates(lhuta) or _month_end(lhuta)
     months = re.search(r"(\d+)\s*m[eě]s[ií]c", lhuta)
     kind_dl, dmonths = "none", None
     if re.search(r"(u|s)konceni ucetniho obdobi|konce ucetniho obdobi", norm(lhuta)):
@@ -151,7 +217,7 @@ def _from_ecru(h: list[str], r: list[str]) -> dict:
     organ_raw = g("organ")
     return {
         "kod": f"MAPA-{num}", "kod_povinnosti": f"MAPA-{num}", "krok": "1", "role": "",
-        "predmet": g("oznaceni"), "organ": re.split(r"[\n/]", organ_raw)[0].strip(), "_organ_raw": organ_raw,
+        "predmet": g("oznaceni"), "organ": re.split(r"[\n/;]", re.sub(r"\(.*?\)", " ", organ_raw, flags=re.S))[0].strip(), "_organ_raw": re.sub(r"\(.*?\)", " ", organ_raw, flags=re.S),
         "ukon": _act(g("zpusob vyrizeni")), "oblast": g("proces"), "typ": "udalost" if ev else "periodicka",
         "pouzitelnost": "", "podminky": "", "vyjimky": "", "navaznosti": g("souvisi s cislem povinnosti"),
         "lhuta_typ": kind_dl, "lhuta_data": dates if kind_dl == "fixed" else "", "lhuta_mesicu": dmonths or "",
@@ -161,6 +227,9 @@ def _from_ecru(h: list[str], r: list[str]) -> dict:
         "zdroj": "Mapa předkládání (import)", "clanek": g("zdroje povinnosti"), "verze": "", "ucinnost_od": "",
         "overeno_dne": "", "stav": "", "duvod_k_overeni": "",
         "_ecru": True, "_obsah": g("obsah povinnosti") + " " + g("blizsi urceni obsahu"),
+        "_num": int(num) if str(num).isdigit() else None, "_resp": g("odpovedny subjekt"),
+        "_subm": g("povinne predkladajici osoba"), "_nature": g("povaha povinnosti"),
+        "_appr": "; ".join(x for x in (g("schvalovatel 1"), g("schvalovatel 2")) if x and norm(x) != "neni"),
     }
 
 
@@ -291,8 +360,24 @@ def normalize_record(raw: dict, today: date, opts: dict | None = None) -> tuple[
             warnings.append("Modře v podkladu: povinnost doplněna z ZOK nebo stanov, v původní tabulce chyběla.")
         if comment:
             notes.append("Komentář v podkladu: " + comment.replace("\n", " "))
+        fl = raw.get("_findings") or []
+        if fl:
+            txt = " ".join(fl)
+            if re.search(r"overit|neuvadi", norm(txt)):
+                reasons.append("Zjištění kontroly mapy: " + txt)
+            else:
+                notes.append("Zjištění kontroly mapy: " + txt)
+        vp = _parse_vp(raw["clanek"])
         full = all(opts.get(k) for k in ("verze", "ucinnost_od", "overeno_dne"))
-        if full and not bad_src:
+        if vp:
+            raw.update(vp)
+            if opts.get("vp_potvrzeno") and opts.get("overeno_dne") and not bad_src:
+                raw["overeno_dne"] = opts["overeno_dne"]
+                warnings.append("Vnitřní předpis: použitelnost po změně názvu na ECRU potvrzena uživatelem při importu.")
+            else:
+                reasons.append("Zdroj je vnitřní předpis ve znění označeném Proton; použitelnost po změně názvu na ECRU "
+                               "a schválení musí potvrdit Compliance nebo právník.")
+        elif full and not bad_src:
             raw["zdroj"] = opts.get("zdroj") or raw["zdroj"]
             raw["verze"], raw["ucinnost_od"], raw["overeno_dne"] = opts["verze"], opts["ucinnost_od"], opts["overeno_dne"]
             warnings.append("Verze, účinnost a datum ověření doplněny při importu uživatelem.")
@@ -319,7 +404,8 @@ def normalize_record(raw: dict, today: date, opts: dict | None = None) -> tuple[
         "trigger_key": ";".join(trig), "keywords": raw["klicova_slova"], "status": status,
         "verify_reason": " ".join(reasons + raw.get("_notes", [])) if reasons else "", "source_name": raw["zdroj"], "source_ref": raw["clanek"],
         "source_version": raw["verze"], "effective_from": raw["ucinnost_od"] or None,
-        "verified_on": raw["overeno_dne"] or None,
+        "verified_on": raw["overeno_dne"] or None, "responsible": raw.get("_resp", ""), "submitter": raw.get("_subm", ""),
+        "nature": raw.get("_nature", ""), "approvers": raw.get("_appr", ""),
     }
     return rec, errors, warnings
 
@@ -330,20 +416,30 @@ def content_hash(rec: dict) -> str:
 
 def build_preview(db, filename: str, data: bytes, today: date, opts: dict | None = None) -> dict:
     sha = hashlib.sha256(data).hexdigest()
-    headers, rows, layout = read_table(filename, data)
-    meta = read_meta(filename, data, headers.index("zdroje povinnosti")) if layout == "ecru" and "zdroje povinnosti" in headers else {}
+    tables, findings = read_tables(filename, data)
+    layout = tables[0]["layout"]
+    fmap: dict[int, list[str]] = {}
+    for f in findings:
+        for n in f["numbers"]:
+            fmap.setdefault(n, []).append(f"{f['area']}: {f['text']}")
+    entries = []
+    for tb in tables:
+        h, lay = tb["headers"], tb["layout"]
+        mt = read_meta(filename, data, h.index("zdroje povinnosti"), tb["index"]) if lay == "ecru" and "zdroje povinnosti" in h else {}
+        for ln, r in tb["rows"]:
+            entries.append((h, lay, mt, ln, r, tb["sheet"] if len(tables) > 1 and tb is not tables[0] else None))
     out, seen_codes, seen_sig = [], {}, {}
     existing = {r["code"]: r["content_hash"] for r in db.execute("SELECT code, content_hash FROM obligations")}
-    for ln, r in rows:
+    for headers, lay, meta, ln0, r, sheet in entries:
+        ln = f"{sheet}!{ln0}" if sheet else ln0
         if not any(c for c in r):
             continue
-        raw = _from_ecru(headers, r) if layout == "ecru" else _rec(headers, r)
-        if layout == "ecru" and not raw["predmet"] and not raw["organ"]:
+        raw = _from_ecru(headers, r) if lay == "ecru" else _rec(headers, r)
+        if lay == "ecru" and not raw["predmet"] and not raw["organ"]:
             continue  # poznámky pod tabulkou
-        if layout == "ecru":
-            raw["_meta"] = meta.get(ln, {})
-            for k in ("verze", "ucinnost_od", "overeno_dne"):
-                pass
+        if lay == "ecru":
+            raw["_meta"] = meta.get(ln0, {})
+            raw["_findings"] = fmap.get(raw.get("_num"), [])
         rec, errs, warns = normalize_record(raw, today, opts)
         item = {"line": ln, "record": rec, "errors": errs, "warnings": warns, "action": "error" if errs else "new",
                 "code": (rec or {}).get("code") or raw["kod"], "subject": raw["predmet"], "organ": raw["organ"]}

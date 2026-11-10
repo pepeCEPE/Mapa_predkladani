@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS obligations(
  trigger_key TEXT, keywords TEXT,
  status TEXT NOT NULL, verify_reason TEXT,
  source_name TEXT, source_ref TEXT, source_version TEXT, effective_from TEXT, verified_on TEXT,
- is_demo INTEGER DEFAULT 0, content_hash TEXT, batch_id INTEGER, updated_at TEXT
+ is_demo INTEGER DEFAULT 0, content_hash TEXT, batch_id INTEGER, updated_at TEXT,
+ responsible TEXT, submitter TEXT, nature TEXT, approvers TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_ob_duty ON obligations(duty_code, step_no);
 CREATE TABLE IF NOT EXISTS meetings(
@@ -42,6 +43,11 @@ def connect():
     c = sqlite3.connect(DB_PATH(), check_same_thread=False)
     c.row_factory = sqlite3.Row
     c.executescript(SCHEMA)
+    cols = {r[1] for r in c.execute("PRAGMA table_info(obligations)")}
+    for col in ("responsible", "submitter", "nature", "approvers"):   # migrace starších databází
+        if col not in cols:
+            c.execute(f"ALTER TABLE obligations ADD COLUMN {col} TEXT")
+    c.commit()
     return c
 
 

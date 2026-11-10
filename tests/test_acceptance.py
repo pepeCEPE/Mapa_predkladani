@@ -275,3 +275,43 @@ def test_rezim_bez_terminu_zasedani(client):
     assert d["upcoming"] and all(m["date"] is None for m in d["next_meetings"])
     p = client.post("/api/recommend", json={"duty_code": "ZAV", "today": "2027-02-01"}).json()
     assert p["status"] == "no_calendar" and p["deadlines"][-1] == "2027-06-30"
+
+
+def test_import_vice_listu_vnitrni_predpisy_a_zjisteni(client, tmp_path):
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Mapa předkládání"
+    H = ["Číslo povinnosti", "Souvisí s číslem povinnosti", "Označení", "Druh", "Způsob vyřízení", "Výskyt", "Lhůta", "Orgán", "Obsah povinnosti",
+         "Bližší určení obsahu", "Odpovědný subjekt", "Schvalovatel 1", "Schvalovatel 2", "Zdroje povinnosti", "Proces", "Reporting ČNB", "Reporting JTFG"]
+    ws.append(["Mapa"]); ws.append(H)
+    ws.append([1, None, "Původní A", "Periodická zpráva", "schválení", "1 x ročně", "30. 6.", "valná hromada", "x", "y", "", "", "", "čl. 1 stanov", "p", "", ""])
+    ws.append([2, None, "Původní B", "Periodická zpráva", "schválení", "4 x ročně", "", "představenstvo", "x", "y", "", "", "", "čl. 2 stanov", "p", "", ""])
+    ws2 = wb.create_sheet("Doplnění představenstvo")
+    ws2.append(["Doplnění"]); ws2.append([])
+    ws2.append(H + ["Povinně předkládající osoba", "Povaha povinnosti"])
+    ws2.append([3, 2, "Roční hodnocení depozitáře", "Periodická zpráva", "předložení", "1 x ročně", "do konce března následujícího kalendářního roku",
+                "představenstvo (projekce se předkládá předsedovi)", "x", "y", "Administrace", "není", "není",
+                "VP_29_01 Pravidla jednání s depozitářem (účinnost od 1. 8. 2025), čl. 7.1", "p", "", "", "Administrace", "Výslovná povinnost"])
+    ws3 = wb.create_sheet("Zjištění a zdroje")
+    ws3.append(["Kontrola"]); ws3.append([])
+    ws3.append(["Oblast", "Existující položka / rozsah", "Zjištění", "Podklad"])
+    ws3.append(["Riziko", "Č. 2 – Původní B", "Záznam uvádí 4x ročně, předpis jinak; četnost je třeba ověřit.", "VP"])
+    ws3.append(["Jiné", "Č. 1 a 3", "Jen poznámka bez nutnosti ověření.", "VP"])
+    p = tmp_path / "vice.xlsx"
+    wb.save(p)
+    opts = {"verze": "NZ 1", "ucinnost_od": "2026-10-01", "overeno_dne": "2026-11-09"}
+    pv = client.post("/api/import/preview", params=opts, files={"file": ("vice.xlsx", p.read_bytes())}).json()
+    st = {r["code"]: r["status"] for r in pv["rows"]}
+    assert st == {"MAPA-1": "potvrzeno", "MAPA-2": "k_overeni", "MAPA-3": "k_overeni"}   # 2: zjištění k ověření, 3: předpis Proton
+    client.post("/api/import/commit", json={"token": pv["token"]})
+    obs = {o["code"]: o for o in client.get("/api/obligations", params={"limit": 500}).json()["items"] if o["code"].startswith("MAPA-")}
+    assert "četnost je třeba ověřit" in obs["MAPA-2"]["verify_reason"]
+    assert "Jen poznámka" in obs["MAPA-1"]["exceptions"] and obs["MAPA-1"]["confirmed"]
+    n = obs["MAPA-3"]
+    assert (n["source_name"], n["source_ref"], n["effective_from"]) == ("VP_29_01 Pravidla jednání s depozitářem", "čl. 7.1", "2025-08-01")
+    assert n["organ"] == "predstavenstvo" and n["deadline_dates"] == "3-31" and n["submitter"] == "Administrace" and n["nature"] == "Výslovná povinnost"
+    assert "Proton" in n["verify_reason"] and not n["confirmed"]
+    # po potvrzení Compliance se vnitřní předpisy potvrdí
+    pv2 = client.post("/api/import/preview", params=opts | {"vp_potvrzeno": "true"}, files={"file": ("vice.xlsx", p.read_bytes())}).json()
+    assert {r["code"]: r["status"] for r in pv2["rows"]}["MAPA-3"] == "potvrzeno"

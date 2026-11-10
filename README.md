@@ -33,7 +33,7 @@ Při prvním startu se vytvoří `data/app.db` a načtou se **demo data** (schv�
 - **Katalog** – filtry orgán / úkon / oblast / typ / stav, stránkování (testováno na 440 záznamech).
 - **Kontrola programu** – „Musí být zařazeno“, „Prověřte, zda se vás týká“, „Mohlo by být vhodné zařadit“; situační checklist Ano/Ne/Nevím; uložení a kopírování programu; stav „není zařazeno“ se odvozuje z uloženého programu (jinak „neznámý“).
 - **Kalendář** – roční přehled lhůt a zasedání, doporučení posledního bezpečného zasedání, konflikt / neúplný kalendář, přepočet při změně termínů.
-- **Import** – XLSX/CSV, náhled, chyby po řádcích, duplicity a rozpory, idempotentní uložení. Rozpoznává šablonu (`data/import_template.csv`) i sloupce dřívější „Mapy předkládání“ (ty se vždy označí K ověření).
+- **Import** – XLSX/CSV, náhled, chyby po řádcích, duplicity a rozpory, idempotentní uložení. Čte všechny listy souboru: list s mapou, list s doplněnými povinnostmi (zdroj, účinnost a článek se přečtou z textu vnitřních předpisů `VP_…`) a list „Zjištění a zdroje“ (pravidla, u nichž kontrola žádá ověření, se označí K ověření). Rozpoznává šablonu (`data/import_template.csv`) i sloupce dřívější „Mapy předkládání“ (ty se vždy označí K ověření).
 
 ## Pravidla výpočtu
 - Pravidlo je **potvrzené** jen s vyplněným zdrojem, článkem, verzí, účinností a datem ověření (a účinností ≤ datu výpočtu). Jinak je **K ověření** s důvodem a nikdy se nezobrazí jako potvrzená povinnost ani mezi „Musí být zařazeno“.
